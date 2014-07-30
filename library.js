@@ -143,8 +143,6 @@
 					allowedCorporation = true;
 				}
 
-				console.log(allowedAlliance)
-
 				if (allowedAlliance && allowedCorporation) {
 					client.fetch('corp:CorporationSheet',
 						{
@@ -152,7 +150,6 @@
 						})
 						.then(function(corporateResult) {
 							userData.fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
-							console.log(userData);
 							return callback(null, req, res, userData);
 						})
 						.fail(function() {

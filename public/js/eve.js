@@ -26,7 +26,7 @@
 					vCode: vCode
 				}, function(err, result) {
 					if (err) {
-						return console.log(err);
+						return app.alertError(err.message);
 					}
 
 					var html = '',
