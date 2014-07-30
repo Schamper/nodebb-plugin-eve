@@ -1,0 +1,19 @@
+{
+	"id": "nodebb-plugin-eve",
+	"name": "EVE registration whitelists",
+	"description": "Only allow registration from certain EVE corporations/alliances",
+	"url": "https://github.com/Schamper/nodebb-plugin-eve",
+	"library": "./library.js",
+	"hooks": [
+		{ "hook": "static:app.load", "method": "load" },
+		{ "hook": "filter:admin.header.build", "method": "addNavigation" },
+
+		{ "hook": "filter:register.build", "method": "addRegistrationField" },
+		{ "hook": "filter:register.check", "method": "checkRegistration" }
+	],
+	"scripts": [
+		"public/js/eve.js"
+	],
+	"templates": "./templates",
+	"minver": "0.5.0"
+}

@@ -1,0 +1,26 @@
+{
+    "name": "nodebb-plugin-eve",
+    "version": "0.0.1",
+    "description": "NodeBB EVE registration whitelists",
+    "main": "library.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Schamper/nodebb-plugin-eve"
+    },
+    "keywords": [
+        "nodebb",
+        "plugin",
+        "eve"
+    ],
+    "author": "Schamper <mrwafflewaffle@aim.com>",
+    "license": "BSD-2-Clause",
+    "bugs": {
+        "url": "https://github.com/Schamper/nodebb-plugin-eve/issues"
+    },
+	"dependencies": {
+		"neow": "~1.0.0"
+	}
+}
