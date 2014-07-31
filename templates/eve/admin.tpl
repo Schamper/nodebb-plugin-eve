@@ -89,6 +89,11 @@
                                 '<i class="fa fa-times"></i>' +
                             '</span>&nbsp;' +
                         '</div>' +
+                        '<div class="pull-right">' +
+                            '<span>' +
+                                '<img height="20" src="http://image.eveonline.com/{type}/{id}_30.png">' +
+                            '</span>' +
+                        '</div>' +
                     '</div>' +
                 '</div>';
 
@@ -99,20 +104,21 @@
 
                     if (lists[l].length > 0) {
                         lists[l] = JSON.parse(lists[l]);
-                        $('[data-list="' + l + '"]').html(makeHTML(lists[l]));
+                        $('[data-list="' + l + '"]').html(makeHTML(lists[l], l));
                     } else {
                         lists[l] = {};
                     }
                 }
             }
 
-            function makeHTML(list) {
+            function makeHTML(list, type) {
                 var html = '';
                 for (var a in list) {
                     if (list.hasOwnProperty(a)) {
                         html += templates.parse(tpl, {
                             id: a,
-                            name: list[a]
+                            name: list[a],
+                            type: type.charAt(0).toUpperCase() + type.slice(1)
                         });
                     }
                 }
@@ -153,7 +159,8 @@
 
                 $('[data-list="' + type + '"]').append(templates.parse(tpl, {
                     id: id,
-                    name: name
+                    name: name,
+                    type: type.charAt(0).toUpperCase() + type.slice(1)
                 }));
 
                 lists[type][id] = name;

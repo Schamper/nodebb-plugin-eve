@@ -1,8 +1,11 @@
 (function(EVE) {
 	var pjson = require('./package.json'),
 		Settings = module.parent.require('./settings'),
+		User = module.parent.require('./user'),
 		AdminSockets = module.parent.require('./socket.io/admin').plugins,
 		PluginSockets = module.parent.require('./socket.io/plugins'),
+		db = module.parent.require('./database'),
+		winston = module.parent.require('winston'),
 
 		neow = require('neow');
 
@@ -24,7 +27,8 @@
 			whitelists: {
 				alliance: '{}',
 				corporation: '{}'
-			}
+			},
+			version: ''
 		},
 		sockets: {
 			sync: function() {
@@ -39,8 +43,6 @@
 		char: Config.plugin.id + '-char'
 	};
 
-	Config.global = new Settings(Config.plugin.id, Config.plugin.version, Config.defaults);
-
 	EVE.load = function(app, middleware, controllers, callback) {
 		function renderAdmin(req, res, next) {
 			res.render(Config.plugin.id + '/admin', {});
@@ -52,7 +54,18 @@
 		AdminSockets[Config.plugin.id] = Config.sockets;
 		PluginSockets[Config.plugin.id] = EVE.sockets;
 
-		callback(null, app, middleware, controllers);
+		Config.global = new Settings(Config.plugin.id, Config.plugin.version, Config.defaults, function() {
+			var oldVersion = Config.global.get('version');
+
+			if (oldVersion < Config.plugin.version) {
+				Config.global.set('version', Config.plugin.version);
+				Config.global.persist(function() {
+					Upgrade(oldVersion, Config.plugin.version, function() {
+						callback(null, app, middleware, controllers);
+					});
+				});
+			}
+		});
 	};
 
 	EVE.addNavigation = function(custom_header, callback) {
@@ -149,7 +162,14 @@
 							corporationID: corporationID
 						})
 						.then(function(corporateResult) {
-							userData.fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
+							userData.eve_ticker = corporateResult.ticker.content;
+							userData.eve_name = characterResult.characterName.content;
+							userData.eve_fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
+							userData.eve_characterID = charId;
+							userData.eve_allianceID = allianceID;
+							userData.eve_corporationID = corporationID;
+
+							userData.picture = 'http://image.eveonline.com/Character/' + charId + '_128.jpg';
 							return callback(null, req, res, userData);
 						})
 						.fail(function() {
@@ -164,6 +184,36 @@
 				return callback(new Error('Invalid data'), req, res, userData);
 			})
 			.done();
+	};
+
+	EVE.modifyTopicData = function(topicData, callback) {
+		var uids = [], index = {}, uid;
+		for (var i = 0, l = topicData.posts.length; i < l; i++) {
+			uid = topicData.posts[i].user.uid;
+
+			if (uids.indexOf(uid) === -1) {
+				uids.push(uid);
+			}
+
+			if (Array.isArray(index[uid])) {
+				index[uid].push(i);
+			} else {
+				index[uid] = [i];
+			}
+		}
+
+		User.getMultipleUserFields(uids, ['uid', 'eve_fullname', 'eve_name', 'eve_ticker', 'username'], function(err, result) {
+			var cur;
+			for (var i = 0, l1 = result.length; i < l1; i++) {
+				for (var j = 0, l2 = index[result[i].uid].length; j < l2; j++) {
+					cur = index[result[i].uid][j];
+					topicData.posts[cur].user.eve_fullname = result[i].eve_fullname;
+					topicData.posts[cur].user.eve_name = result[i].eve_name;
+					topicData.posts[cur].user.eve_ticker = result[i].eve_ticker;
+				}
+			}
+			callback(null, topicData);
+		});
 	};
 
 	EVE.sockets = {
@@ -200,6 +250,44 @@
 					})
 					.done();
 			}
+		}
+	};
+
+	var Upgrade = function(oldVersion, newVersion, callback) {
+		if (newVersion === '0.0.3') {
+			var regex = /\[(.+)\]/g, user, match;
+			db.getSortedSetRange('users:joindate', 0, -1, function (err, uids) {
+				User.getMultipleUserFields(uids, ['uid', 'fullname'], function (err, users) {
+					for (var i = 0, l = users.length; i < l; i++) {
+						user = users[i];
+						match = regex.exec(user.fullname);
+						if (match) {
+							User.setUserFields(user.uid, {
+								eve_fullname: user.fullname,
+								eve_ticker: match[1],
+								eve_name: user.fullname.replace(match[0], '').trim(),
+								eve_keyid: '',
+								eve_vcode: '',
+								eve_characterID: '',
+								eve_allianceID: '',
+								eve_corporationID: ''
+							}, done);
+						}
+					}
+				});
+			});
+		} else {
+			error();
+		}
+
+		function done() {
+			winston.info('[' + pjson.name + '] Upgraded from ' + oldVersion + ' to ' + newVersion);
+			callback();
+		}
+
+		function error() {
+			winston.info('[' + pjson.name + '] No upgrade performed, old version was ' + oldVersion + ' and new version is ' + newVersion);
+			callback();
 		}
 	};
 })(module.exports);

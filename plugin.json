@@ -9,7 +9,9 @@
 		{ "hook": "filter:admin.header.build", "method": "addNavigation" },
 
 		{ "hook": "filter:register.build", "method": "addRegistrationField" },
-		{ "hook": "filter:register.check", "method": "checkRegistration" }
+		{ "hook": "filter:register.check", "method": "checkRegistration" },
+
+		{ "hook": "filter:topic.get", "method": "modifyTopicData" }
 	],
 	"scripts": [
 		"public/js/eve.js"
