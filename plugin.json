@@ -11,7 +11,8 @@
 		{ "hook": "filter:register.build", "method": "addRegistrationField" },
 		{ "hook": "filter:register.check", "method": "checkRegistration" },
 
-		{ "hook": "filter:topic.get", "method": "modifyTopicData" }
+		{ "hook": "filter:topic.get", "method": "modifyTopicData" },
+		{ "hook": "filter:user.removeFields", "method": "modifyUserData" }
 	],
 	"scripts": [
 		"public/js/eve.js"

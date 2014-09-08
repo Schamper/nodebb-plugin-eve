@@ -223,6 +223,10 @@
 		});
 	};
 
+	EVE.modifyUserData = function(fieldsToRemove, callback) {
+		callback(null, fieldsToRemove.concat(['eve_keyid', 'eve_vcode']));
+	};
+
 	EVE.sockets = {
 		getCharacters: function(socket, data, callback) {
 			if (data.keyId && data.keyId.length > 0 && data.vCode && data.vCode.length > 0) {
