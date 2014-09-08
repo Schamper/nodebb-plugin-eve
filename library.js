@@ -2,6 +2,7 @@
 	var pjson = require('./package.json'),
 		Settings = module.parent.require('./settings'),
 		User = module.parent.require('./user'),
+		SocketIndex = module.parent.require('./socket.io/index'),
 		AdminSockets = module.parent.require('./socket.io/admin').plugins,
 		PluginSockets = module.parent.require('./socket.io/plugins'),
 		db = module.parent.require('./database'),
@@ -38,9 +39,9 @@
 	};
 
 	Config.registrationIds = {
-		keyId: Config.plugin.id + '-keyid',
-		vCode: Config.plugin.id + '-vcode',
-		char: Config.plugin.id + '-char'
+		keyId: Config.plugin.id + '_keyid',
+		vCode: Config.plugin.id + '_vcode',
+		char: Config.plugin.id + '_characterID'
 	};
 
 	EVE.load = function(app, middleware, controllers, callback) {
@@ -64,6 +65,8 @@
 						callback(null, app, middleware, controllers);
 					});
 				});
+			} else {
+				callback(null, app, middleware, controllers);
 			}
 		});
 	};
@@ -162,14 +165,18 @@
 							corporationID: corporationID
 						})
 						.then(function(corporateResult) {
-							userData.eve_ticker = corporateResult.ticker.content;
-							userData.eve_name = characterResult.characterName.content;
-							userData.eve_fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
-							userData.eve_characterID = charId;
-							userData.eve_allianceID = allianceID;
-							userData.eve_corporationID = corporationID;
+							userData['eve_ticker'] = corporateResult.ticker.content;
+							userData['eve_name'] = characterResult.characterName.content;
+							userData['eve_fullname'] = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
+							userData['eve_characterID'] = charId;
+							userData['eve_allianceID'] = allianceID;
+							userData['eve_corporationID'] = corporationID;
 
-							userData.picture = 'http://image.eveonline.com/Character/' + charId + '_128.jpg';
+							//userData['eve_keyid'] = null;
+							//userData['eve_vcode'] = null;
+
+							//This doesn't work in NodeBB yet
+							//userData.picture = 'http://image.eveonline.com/Character/' + charId + '_128.jpg';
 							return callback(null, req, res, userData);
 						})
 						.fail(function() {
@@ -254,7 +261,14 @@
 	};
 
 	var Upgrade = function(oldVersion, newVersion, callback) {
-		if (newVersion === '0.0.3') {
+		if (oldVersion === '' || newVersion === '0.0.3') {
+			upgrade1();
+		}
+		if (newVersion === '0.0.4') {
+			upgrade2();
+		}
+
+		function upgrade1() {
 			var regex = /\[(.+)\]/g, user, match;
 			db.getSortedSetRange('users:joindate', 0, -1, function (err, uids) {
 				User.getMultipleUserFields(uids, ['uid', 'fullname'], function (err, users) {
@@ -276,8 +290,25 @@
 					}
 				});
 			});
-		} else {
-			error();
+		}
+
+		function upgrade2() {
+			var user;
+			db.getSortedSetRange('users:joindate', 0, -1, function (err, uids) {
+				User.getMultipleUserFields(uids, ['uid', 'eve-char'], function (err, users) {
+					for (var i = 0, l = users.length; i < l; i++) {
+						user = users[i];
+						if (user['eve-char']) {
+							User.setUserFields(user.uid, {
+								'eve-keyid': null,
+								'eve-vcode': null,
+								'eve-char': null,
+								eve_characterID: user['eve-char']
+							}, done);
+						}
+					}
+				});
+			});
 		}
 
 		function done() {
