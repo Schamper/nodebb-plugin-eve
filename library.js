@@ -151,7 +151,7 @@
 					allowedAlliance = true;
 				}
 
-				if (Config.global.get('toggles.coroporationWhitelistEnabled')) {
+				if (Config.global.get('toggles.corporationWhitelistEnabled')) {
 					if (allowedCorporations.hasOwnProperty(corporationID)) {
 						allowedCorporation = true;
 					}
