@@ -265,11 +265,18 @@
 	};
 
 	var Upgrade = function(oldVersion, newVersion, callback) {
+		var upgrade = false;
 		if (oldVersion === '' || newVersion === '0.0.3') {
+			upgrade = true;
 			upgrade1();
 		}
 		if (newVersion === '0.0.4') {
+			upgrade = true;
 			upgrade2();
+		}
+
+		if (!upgrade) {
+			done();
 		}
 
 		function upgrade1() {
