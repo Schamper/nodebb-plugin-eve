@@ -1,9 +1,9 @@
 (function(window) {
 	$(window).on('action:ajaxify.end', function(e, data) {
 		if (data.url === 'register' && $('#register-eve').length > 0) {
-			var keyIdElement = $('#eve-keyid'),
-				vCodeElement = $('#eve-vcode'),
-				charElement = $('#eve-char'),
+			var keyIdElement = $('#eve_keyid'),
+				vCodeElement = $('#eve_vcode'),
+				charElement = $('#eve_characterID'),
 
 				timeOut;
 
