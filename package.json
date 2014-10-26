@@ -1,6 +1,6 @@
 {
     "name": "nodebb-plugin-eve",
-    "version": "0.0.6",
+    "version": "0.0.7",
     "description": "NodeBB EVE registration whitelists",
     "main": "library.js",
     "scripts": {
