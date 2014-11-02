@@ -5,6 +5,7 @@
 		SocketIndex = module.parent.require('./socket.io/index'),
 		AdminSockets = module.parent.require('./socket.io/admin').plugins,
 		PluginSockets = module.parent.require('./socket.io/plugins'),
+		UserSockets = module.parent.require('./socket.io/user'),
 		db = module.parent.require('./database'),
 		winston = module.parent.require('winston'),
 
@@ -188,6 +189,15 @@
 				return callback(new Error('Invalid data'), req, res, userData);
 			})
 			.done();
+	};
+
+	EVE.userCreated = function(userData) {
+		if (userData['eve_characterID']) {
+			UserSockets.uploadProfileImageFromUrl(
+				{ uid: userData.uid },
+				'http://image.eveonline.com/Character/' + userData['eve_characterID'] + '_128.jpg',
+				function(err, url) {});
+		}
 	};
 
 	EVE.addCustomFields = function(fields, callback) {
