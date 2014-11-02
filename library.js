@@ -137,15 +137,23 @@
 				characterID: charId
 			})
 			.then(function(characterResult) {
-				var allianceID = characterResult.allianceID.content,
-					corporationID = characterResult.corporationID.content,
+				var allianceID,
+					corporationID,
 					allowedAlliances = JSON.parse(Config.global.get('whitelists.alliance')),
 					allowedCorporations = JSON.parse(Config.global.get('whitelists.corporation')),
 					allowedAlliance = false,
 					allowedCorporation = false;
 
+				if (characterResult.allianceID) {
+					allianceID = characterResult.allianceID.content;
+				}
+
+				if (characterResult.corporationID) {
+					corporationID = characterResult.corporationID.content
+				}
+
 				if (Config.global.get('toggles.allianceWhitelistEnabled')) {
-					if (allowedAlliances.hasOwnProperty(allianceID)) {
+					if (allianceID && allowedAlliances.hasOwnProperty(allianceID)) {
 						allowedAlliance = true;
 					}
 				} else {
@@ -153,7 +161,7 @@
 				}
 
 				if (Config.global.get('toggles.corporationWhitelistEnabled')) {
-					if (allowedCorporations.hasOwnProperty(corporationID)) {
+					if (corporationID && allowedCorporations.hasOwnProperty(corporationID)) {
 						allowedCorporation = true;
 					}
 				} else {
