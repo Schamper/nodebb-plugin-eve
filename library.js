@@ -172,9 +172,6 @@
 							userData['eve_allianceID'] = allianceID;
 							userData['eve_corporationID'] = corporationID;
 
-							//userData['eve_keyid'] = null;
-							//userData['eve_vcode'] = null;
-
 							//This doesn't work in NodeBB yet
 							//userData.picture = 'http://image.eveonline.com/Character/' + charId + '_128.jpg';
 							return callback(null, req, res, userData);
@@ -191,6 +188,14 @@
 				return callback(new Error('Invalid data'), req, res, userData);
 			})
 			.done();
+	};
+
+	EVE.addCustomFields = function(fields, callback) {
+		callback(null, fields.concat([
+			'eve_characterID', 'eve_keyid', 'eve_vcode',
+			'eve_ticker', 'eve_name', 'eve_fullname',
+			'eve_characterID', 'eve_allianceID', 'eve_corporationID'
+		]));
 	};
 
 	EVE.modifyTopicData = function(topicData, callback) {
@@ -223,8 +228,13 @@
 		});
 	};
 
-	EVE.modifyUserData = function(fieldsToRemove, callback) {
-		callback(null, fieldsToRemove.concat(['eve_keyid', 'eve_vcode']));
+	EVE.modifyUserData = function(users, callback) {
+		for (var i = 0, l = users.length; i < l; i++) {
+			users[i]['eve_keyid'] = undefined;
+			users[i]['eve_vcode'] = undefined;
+		}
+
+		callback(null, users);
 	};
 
 	EVE.sockets = {

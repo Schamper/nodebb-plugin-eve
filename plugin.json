@@ -10,13 +10,15 @@
 
 		{ "hook": "filter:register.build", "method": "addRegistrationField" },
 		{ "hook": "filter:register.check", "method": "checkRegistration" },
+		{ "hook": "filter:user.custom_fields", "method": "addCustomFields" },
+		{ "hook": "action:user.create", "method": "userCreated" },
 
 		{ "hook": "filter:topic.get", "method": "modifyTopicData" },
-		{ "hook": "filter:user.removeFields", "method": "modifyUserData" }
+		{ "hook": "filter:users.get", "method": "modifyUserData" }
 	],
 	"scripts": [
 		"public/js/eve.js"
 	],
 	"templates": "./templates",
-	"minver": "0.5.0"
+	"minver": "0.5.1"
 }
