@@ -13,7 +13,6 @@
 		{ "hook": "filter:user.custom_fields", "method": "addCustomFields" },
 		{ "hook": "action:user.create", "method": "userCreated" },
 
-		{ "hook": "filter:topic.get", "method": "modifyTopicData" },
 		{ "hook": "filter:users.get", "method": "modifyUserData" }
 	],
 	"scripts": [

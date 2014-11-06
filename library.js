@@ -2,14 +2,14 @@
 	var pjson = require('./package.json'),
 		Settings = module.parent.require('./settings'),
 		User = module.parent.require('./user'),
-		SocketIndex = module.parent.require('./socket.io/index'),
 		AdminSockets = module.parent.require('./socket.io/admin').plugins,
 		PluginSockets = module.parent.require('./socket.io/plugins'),
 		UserSockets = module.parent.require('./socket.io/user'),
-		db = module.parent.require('./database'),
 		winston = module.parent.require('winston'),
+		db = module.parent.require('./database'),
 
-		neow = require('neow');
+		Api = require('./lib/api'),
+		Upgrade = require('./lib/upgrade');
 
 	var Config = {
 		plugin: {
@@ -62,7 +62,7 @@
 			if (oldVersion < Config.plugin.version) {
 				Config.global.set('version', Config.plugin.version);
 				Config.global.persist(function() {
-					Upgrade(oldVersion, Config.plugin.version, function() {
+					Upgrade.doUpgrade(oldVersion, Config.plugin.version, function() {
 						callback(null, app, middleware, controllers);
 					});
 				});
@@ -127,76 +127,68 @@
 			return callback(new Error('Invalid data'), req, res, userData);
 		}
 
-		var client = new neow.EveClient({
+		var api = new Api.client({
 			keyID: keyId,
 			vCode: vCode
 		});
 
-		client.fetch('eve:CharacterInfo',
-			{
-				characterID: charId
-			})
-			.then(function(characterResult) {
-				var allianceID,
-					corporationID,
-					allowedAlliances = JSON.parse(Config.global.get('whitelists.alliance')),
-					allowedCorporations = JSON.parse(Config.global.get('whitelists.corporation')),
-					allowedAlliance = false,
-					allowedCorporation = false;
+		api.getCharacterInfo({ characterID: charId }, function(err, characterResult) {
+			if (err) {
+				return callback(new Error('API Error'), req, res, userData);
+			}
 
-				if (characterResult.allianceID) {
-					allianceID = characterResult.allianceID.content;
-				}
+			var allianceID,
+				corporationID,
+				allowedAlliances = JSON.parse(Config.global.get('whitelists.alliance')),
+				allowedCorporations = JSON.parse(Config.global.get('whitelists.corporation')),
+				allowedAlliance = false,
+				allowedCorporation = false;
 
-				if (characterResult.corporationID) {
-					corporationID = characterResult.corporationID.content
-				}
+			if (characterResult.allianceID) {
+				allianceID = characterResult.allianceID.content;
+			}
 
-				if (Config.global.get('toggles.allianceWhitelistEnabled')) {
-					if (allianceID && allowedAlliances.hasOwnProperty(allianceID)) {
-						allowedAlliance = true;
-					}
-				} else {
+			if (characterResult.corporationID) {
+				corporationID = characterResult.corporationID.content
+			}
+
+			if (Config.global.get('toggles.allianceWhitelistEnabled')) {
+				if (allianceID && allowedAlliances.hasOwnProperty(allianceID)) {
 					allowedAlliance = true;
 				}
+			} else {
+				allowedAlliance = true;
+			}
 
-				if (Config.global.get('toggles.corporationWhitelistEnabled')) {
-					if (corporationID && allowedCorporations.hasOwnProperty(corporationID)) {
-						allowedCorporation = true;
-					}
-				} else {
+			if (Config.global.get('toggles.corporationWhitelistEnabled')) {
+				if (corporationID && allowedCorporations.hasOwnProperty(corporationID)) {
 					allowedCorporation = true;
 				}
+			} else {
+				allowedCorporation = true;
+			}
 
-				if (allowedAlliance && allowedCorporation) {
-					client.fetch('corp:CorporationSheet',
-						{
-							corporationID: corporationID
-						})
-						.then(function(corporateResult) {
-							userData['eve_ticker'] = corporateResult.ticker.content;
-							userData['eve_name'] = characterResult.characterName.content;
-							userData['eve_fullname'] = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
-							userData['eve_characterID'] = charId;
-							userData['eve_allianceID'] = allianceID;
-							userData['eve_corporationID'] = corporationID;
+			if (allowedAlliance && allowedCorporation) {
+				api.getCorporationSheet({ corporationID: corporationID }, function(err, corporateResult) {
+					if (err) {
+						return callback(new Error('Unknown error'), req, res, userData);
+					}
 
-							//This doesn't work in NodeBB yet
-							//userData.picture = 'http://image.eveonline.com/Character/' + charId + '_128.jpg';
-							return callback(null, req, res, userData);
-						})
-						.fail(function() {
-							return callback(new Error('Unknown error'), req, res, userData);
-						})
-						.done();
-				} else {
-					return callback(new Error('Not an allowed alliance or corporation'), req, res, userData);
-				}
-			})
-			.fail(function() {
-				return callback(new Error('Invalid data'), req, res, userData);
-			})
-			.done();
+					userData['eve_ticker'] = corporateResult.ticker.content;
+					userData['eve_name'] = characterResult.characterName.content;
+					userData['eve_fullname'] = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
+					userData['eve_characterID'] = charId;
+					userData['eve_allianceID'] = allianceID;
+					userData['eve_corporationID'] = corporationID;
+
+					//This doesn't work in NodeBB yet
+					//userData.picture = 'http://image.eveonline.com/Character/' + charId + '_128.jpg';
+					return callback(null, req, res, userData);
+				});
+			} else {
+				return callback(new Error('Not an allowed alliance or corporation'), req, res, userData);
+			}
+		});
 	};
 
 	EVE.userCreated = function(userData) {
@@ -204,7 +196,8 @@
 			UserSockets.uploadProfileImageFromUrl(
 				{ uid: userData.uid },
 				'http://image.eveonline.com/Character/' + userData['eve_characterID'] + '_128.jpg',
-				function(err, url) {});
+				function(err, url) {}
+			);
 		}
 	};
 
@@ -216,148 +209,78 @@
 		]));
 	};
 
-	EVE.modifyTopicData = function(topicData, callback) {
-		var uids = [], index = {}, uid;
-		for (var i = 0, l = topicData.posts.length; i < l; i++) {
-			uid = topicData.posts[i].user.uid;
-
-			if (uids.indexOf(uid) === -1) {
-				uids.push(uid);
-			}
-
-			if (Array.isArray(index[uid])) {
-				index[uid].push(i);
-			} else {
-				index[uid] = [i];
-			}
-		}
-
-		User.getMultipleUserFields(uids, ['uid', 'eve_fullname', 'eve_name', 'eve_ticker', 'username'], function(err, result) {
-			var cur;
-			for (var i = 0, l1 = result.length; i < l1; i++) {
-				for (var j = 0, l2 = index[result[i].uid].length; j < l2; j++) {
-					cur = index[result[i].uid][j];
-					topicData.posts[cur].user.eve_fullname = result[i].eve_fullname;
-					topicData.posts[cur].user.eve_name = result[i].eve_name;
-					topicData.posts[cur].user.eve_ticker = result[i].eve_ticker;
-				}
-			}
-			callback(null, topicData);
-		});
-	};
-
 	EVE.modifyUserData = function(users, callback) {
+		var uids = [], index = {}, uid;
 		for (var i = 0, l = users.length; i < l; i++) {
+			uid = users[i].uid;
+
 			users[i]['eve_keyid'] = undefined;
 			users[i]['eve_vcode'] = undefined;
+
+			// Don't try to grab eve data for guests, or if eve data is already present for this user
+			if (uid != undefined && !users[i]['eve_name']) {
+				if (uids.indexOf(uid) === -1) {
+					uids.push('user:' + uid);
+				}
+
+				if (Array.isArray(index[uid])) {
+					index[uid].push(i);
+				} else {
+					index[uid] = [i];
+				}
+			}
 		}
 
-		callback(null, users);
+		if (uids.length > 0) {
+			// We get data directly from the DB because other we get an infinite loop
+			db.getObjectsFields(uids, ['uid', 'eve_fullname', 'eve_name', 'eve_ticker'], function(err, result) {
+				var cur;
+				for (var i = 0, l1 = result.length; i < l1; i++) {
+					for (var j = 0, l2 = index[result[i].uid].length; j < l2; j++) {
+						cur = index[result[i].uid][j];
+						users[cur].eve_fullname = result[i].eve_fullname;
+						users[cur].eve_name = result[i].eve_name;
+						users[cur].eve_ticker = result[i].eve_ticker;
+					}
+				}
+
+				callback(null, users);
+			});
+		} else {
+			callback(null, users);
+		}
 	};
 
 	EVE.sockets = {
 		getCharacters: function(socket, data, callback) {
 			if (data.keyId && data.keyId.length > 0 && data.vCode && data.vCode.length > 0) {
-				var client = new neow.EveClient({
+				var api = new Api.client({
 					keyID: data.keyId.trim(),
 					vCode: data.vCode.trim()
 				});
 
-				client.fetch('account:Characters')
-					.then(function(result) {
-						callback(null, result);
-					})
-					.fail(function() {
+				api.getCharacters(null, function(err, result) {
+					if (err) {
 						return callback(new Error('EVE Client error'));
-					})
-					.done();
+					}
+
+					return callback(null, result);
+				});
 			}
 		},
 		getID: function(socket, data, callback) {
 			if (data.names && data.names.length > 0) {
-				var client = new neow.EveClient();
+				var api = new Api.client();
 
-				client.fetch('eve:CharacterID',
-					{
-						names: data.names
-					})
-					.then(function(result) {
-						return callback(null, result.characters);
-					})
-					.fail(function() {
+				api.getCharacterID({ names: data.names }, function(err, result) {
+					if (err) {
 						return callback(new Error('EVE Client error'));
-					})
-					.done();
+					}
+
+					return callback(null, result.characters);
+				});
 			}
 		}
 	};
 
-	var Upgrade = function(oldVersion, newVersion, callback) {
-		var upgrade = false;
-		if (oldVersion === '' || newVersion === '0.0.3') {
-			upgrade = true;
-			upgrade1();
-		}
-		if (newVersion === '0.0.4') {
-			upgrade = true;
-			upgrade2();
-		}
-
-		if (!upgrade) {
-			done();
-		}
-
-		function upgrade1() {
-			var regex = /\[(.+)\]/g, user, match;
-			db.getSortedSetRange('users:joindate', 0, -1, function (err, uids) {
-				User.getMultipleUserFields(uids, ['uid', 'fullname'], function (err, users) {
-					for (var i = 0, l = users.length; i < l; i++) {
-						user = users[i];
-						match = regex.exec(user.fullname);
-						if (match) {
-							User.setUserFields(user.uid, {
-								eve_fullname: user.fullname,
-								eve_ticker: match[1],
-								eve_name: user.fullname.replace(match[0], '').trim(),
-								eve_keyid: '',
-								eve_vcode: '',
-								eve_characterID: '',
-								eve_allianceID: '',
-								eve_corporationID: ''
-							}, done);
-						}
-					}
-				});
-			});
-		}
-
-		function upgrade2() {
-			var user;
-			db.getSortedSetRange('users:joindate', 0, -1, function (err, uids) {
-				User.getMultipleUserFields(uids, ['uid', 'eve-char'], function (err, users) {
-					for (var i = 0, l = users.length; i < l; i++) {
-						user = users[i];
-						if (user['eve-char']) {
-							User.setUserFields(user.uid, {
-								'eve-keyid': null,
-								'eve-vcode': null,
-								'eve-char': null,
-								eve_characterID: user['eve-char']
-							}, done);
-						}
-					}
-				});
-			});
-		}
-
-		function done() {
-			winston.info('[' + pjson.name + '] Upgraded from ' + oldVersion + ' to ' + newVersion);
-			callback();
-		}
-
-		function error() {
-			winston.info('[' + pjson.name + '] No upgrade performed, old version was ' + oldVersion + ' and new version is ' + newVersion);
-			callback();
-		}
-	};
 })(module.exports);
