@@ -18,6 +18,5 @@
 	"scripts": [
 		"public/js/eve.js"
 	],
-	"templates": "./templates",
-	"minver": "0.5.1"
+	"templates": "./templates"
 }

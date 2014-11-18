@@ -45,13 +45,19 @@
 		char: Config.plugin.id + '_characterID'
 	};
 
-	EVE.load = function(app, middleware, controllers, callback) {
+	Config.userFields = [
+		'eve_characterID', 'eve_keyid', 'eve_vcode',
+		'eve_ticker', 'eve_name', 'eve_fullname',
+		'eve_characterID', 'eve_allianceID', 'eve_corporationID'
+	];
+
+	EVE.load = function(data, callback) {
 		function renderAdmin(req, res, next) {
 			res.render(Config.plugin.id + '/admin', {});
 		}
 
-		app.get('/admin' + Config.plugin.route, middleware.admin.buildHeader, renderAdmin);
-		app.get('/api/admin' + Config.plugin.route, renderAdmin);
+		data.router.get('/admin' + Config.plugin.route, data.middleware.admin.buildHeader, renderAdmin);
+		data.router.get('/api/admin' + Config.plugin.route, renderAdmin);
 
 		AdminSockets[Config.plugin.id] = Config.sockets;
 		PluginSockets[Config.plugin.id] = EVE.sockets;
@@ -62,12 +68,10 @@
 			if (oldVersion < Config.plugin.version) {
 				Config.global.set('version', Config.plugin.version);
 				Config.global.persist(function() {
-					Upgrade.doUpgrade(oldVersion, Config.plugin.version, function() {
-						callback(null, app, middleware, controllers);
-					});
+					Upgrade.doUpgrade(oldVersion, Config.plugin.version, callback);
 				});
 			} else {
-				callback(null, app, middleware, controllers);
+				callback();
 			}
 		});
 	};
@@ -202,45 +206,43 @@
 	};
 
 	EVE.addCustomFields = function(fields, callback) {
-		callback(null, fields.concat([
-			'eve_characterID', 'eve_keyid', 'eve_vcode',
-			'eve_ticker', 'eve_name', 'eve_fullname',
-			'eve_characterID', 'eve_allianceID', 'eve_corporationID'
-		]));
+		callback(null, fields.concat(Config.userFields));
 	};
 
 	EVE.modifyUserData = function(users, callback) {
 		var uids = [], index = {}, uid;
 		for (var i = 0, l = users.length; i < l; i++) {
-			uid = users[i].uid;
+			if (users[i] != undefined) {
+				users[i]['eve_keyid'] = undefined;
+				users[i]['eve_vcode'] = undefined;
 
-			users[i]['eve_keyid'] = undefined;
-			users[i]['eve_vcode'] = undefined;
+				// Don't try to grab eve data for guests, or if eve data is already present for this user
+				if (users[i].uid != undefined && !users[i]['eve_name']) {
+					uid = users[i].uid;
 
-			// Don't try to grab eve data for guests, or if eve data is already present for this user
-			if (uid != undefined && !users[i]['eve_name']) {
-				if (uids.indexOf(uid) === -1) {
-					uids.push('user:' + uid);
-				}
+					if (uids.indexOf(uid) === -1) {
+						uids.push('user:' + uid);
+					}
 
-				if (Array.isArray(index[uid])) {
-					index[uid].push(i);
-				} else {
-					index[uid] = [i];
+					if (Array.isArray(index[uid])) {
+						index[uid].push(i);
+					} else {
+						index[uid] = [i];
+					}
 				}
 			}
 		}
 
 		if (uids.length > 0) {
 			// We get data directly from the DB because other we get an infinite loop
-			db.getObjectsFields(uids, ['uid', 'eve_fullname', 'eve_name', 'eve_ticker'], function(err, result) {
+			db.getObjectsFields(uids, Config.userFields.concat('uid'), function(err, result) {
 				var cur;
 				for (var i = 0, l1 = result.length; i < l1; i++) {
 					for (var j = 0, l2 = index[result[i].uid].length; j < l2; j++) {
 						cur = index[result[i].uid][j];
-						users[cur].eve_fullname = result[i].eve_fullname;
-						users[cur].eve_name = result[i].eve_name;
-						users[cur].eve_ticker = result[i].eve_ticker;
+						Config.userFields.forEach(function(el) {
+							users[cur][el] = result[i][el];
+						});
 					}
 				}
 
