@@ -4,6 +4,7 @@
 		AdminSockets = module.parent.require('./socket.io/admin').plugins,
 		PluginSockets = module.parent.require('./socket.io/plugins'),
 		UserSockets = module.parent.require('./socket.io/user'),
+		User = module.parent.require('./user'),
 		db = module.parent.require('./database'),
 		winston = module.parent.require('winston'),
 		async = module.parent.require('async'),
@@ -86,7 +87,7 @@
 		callback(null, custom_header);
 	};
 
-	EVE.addRegistrationField = function(req, res, data, callback) {
+	EVE.addRegistrationField = function(data, callback) {
 		var url = 'http://community.eveonline.com/support/api-key/CreatePredefined?accessMask=' + Config.plugin.accessMask,
 			keyHTML = '' +
 				'<input class="form-control" type="text" name="' + Config.registrationIds.keyId + '" id="' + Config.registrationIds.keyId + '" autocorrect="off" autocapitalize="off" />',
@@ -117,18 +118,18 @@
 				}
 			];
 
-		data.regFormEntry = data.regFormEntry.concat(fields);
+		data.templateData.regFormEntry = data.templateData.regFormEntry.concat(fields);
 
-		callback(null, req, res, data);
+		callback(null, data);
 	};
 
-	EVE.checkRegistration = function(req, res, userData, callback) {
-		var keyId = userData[Config.registrationIds.keyId].trim(),
-			vCode = userData[Config.registrationIds.vCode].trim(),
-			charId = userData[Config.registrationIds.char].trim();
+	EVE.checkRegistration = function(data, callback) {
+		var keyId = data.userData[Config.registrationIds.keyId].trim(),
+			vCode = data.userData[Config.registrationIds.vCode].trim(),
+			charId = data.userData[Config.registrationIds.char].trim();
 
 		if (keyId.length === 0 || vCode.length === 0 || charId === 0) {
-			return callback(new Error('Invalid data'), req, res, userData);
+			return callback(new Error('Invalid data'), data);
 		}
 
 		var api = new Api.client({
@@ -138,7 +139,7 @@
 
 		api.getCharacterInfo({ characterID: charId }, function(err, characterResult) {
 			if (err) {
-				return callback(new Error('API Error'), req, res, userData);
+				return callback(new Error('API Error'), data);
 			}
 
 			var allianceID,
@@ -175,75 +176,86 @@
 			if (allowedAlliance && allowedCorporation) {
 				api.getCorporationSheet({ corporationID: corporationID }, function(err, corporateResult) {
 					if (err) {
-						return callback(new Error('Unknown error'), req, res, userData);
+						return callback(new Error('Unknown error'), data);
 					}
 
-					userData.eve_ticker = corporateResult.ticker.content;
-					userData.eve_name = characterResult.characterName.content;
-					userData.eve_fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
-					userData.eve_characterID = charId;
-					userData.eve_allianceID = allianceID;
-					userData.eve_corporationID = corporationID;
+					data.userData.eve_ticker = corporateResult.ticker.content;
+					data.userData.eve_name = characterResult.characterName.content;
+					data.userData.eve_fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
+					data.userData.eve_characterID = charId;
+					data.userData.eve_allianceID = allianceID;
+					data.userData.eve_corporationID = corporationID;
 
-					return callback(null, req, res, userData);
+					return callback(null, data);
 				});
 			} else {
-				return callback(new Error('Not an allowed alliance or corporation'), req, res, userData);
+				return callback(new Error('Not an allowed alliance or corporation'), data);
 			}
 		});
 	};
 
-	EVE.userCreated = function(userData) {
-		if (userData['eve_keyid'] && userData['eve_vcode']) {
+	EVE.addExtraCharacterInfo = function(userData) {
+		if (userData.eve_keyid && userData.eve_vcode) {
 			var api = new Api.client({
-				keyID: userData['eve_keyid'],
-				vCode: userData['eve_vcode']
-			});
+				keyID: userData.eve_keyid,
+				vCode: userData.eve_vcode
+			}), uid = userData.uid;
 
-			api.getCharacters(null, function(err, result) {
-				if (err) return;
+			async.waterfall([
+				function(callback) {
+					api.getCharacters(null, function(err, result) {
+						if (err) return callback(err);
 
-				var characterData = [], character;
-				for (var charId in result.characters) {
-					if (result.characters.hasOwnProperty(charId)) {
-						(function() {
-							character = result.characters[charId];
-							var char = {};
+						var characterData = [], character;
+						for (var charId in result.characters) {
+							if (result.characters.hasOwnProperty(charId)) {
+								character = result.characters[charId];
+								var char = {
+									eve_name: character.name,
+									eve_allianceID: character.allianceID,
+									eve_allianceName: character.allianceName,
+									eve_corporationID: character.corporationID,
+									eve_corporationName: character.corporationName,
+									eve_characterID: charId
+								};
 
-//							for (var charKey in character) {
-//								if (charKey != 'cachedUntil' && charKey != 'currentTime' && character.hasOwnProperty(charKey)) {
-//									char['eve_' + charKey] = character[charKey];
-//								}
-//							}
-
-							char = {
-								eve_name: character.name,
-								eve_allianceID: character.allianceID,
-								eve_allianceName: character.allianceName,
-								eve_corporationID: character.corporationID,
-								eve_corporationName: character.corporationName,
-								eve_characterID: charId
-							};
-
-							if (character.corporationID != "0") {
-								api.getCorporationSheet({ corporationID: character.corporationID }, function(err, corporateResult) {
-									char.eve_ticker = corporateResult.ticker.content;
-									char.eve_fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
-
-									characterData.push(char);
-								});
-							} else {
 								characterData.push(char);
 							}
-						})();
-					}
+						}
+
+						callback(null, characterData);
+					});
+				},
+				function(characterData, callback) {
+					async.map(characterData, function(char, next) {
+						if (char.eve_corporationID != "0") {
+							api.getCorporationSheet({ corporationID: char.eve_corporationID }, function(err, corporateResult) {
+								if (err) return next(err);
+
+								char.eve_ticker = corporateResult.ticker.content;
+								char.eve_fullname = '[' + corporateResult.ticker.content + '] ' + char.eve_name;
+
+								next(null, char);
+							});
+						} else {
+							next(null, char);
+						}
+					}, callback);
 				}
+			], function(err, characterData) {
+				if (err) return;
+
+				db.delete('eve:' + uid + ':characters');
+				characterData.forEach(function(char, index) {
+					db.listAppend('eve:' + uid + ':characters', index);
+					db.setObject('eve:' + uid + ':characters:' + index, char);
+				});
 			});
 
-			if (userData['eve_characterID']) {
+			if (userData.eve_characterID) {
 				UserSockets.uploadProfileImageFromUrl(
 					{ uid: userData.uid },
-					'http://image.eveonline.com/Character/' + userData['eve_characterID'] + '_128.jpg',
+					'http://image.eveonline.com/Character/' + userData.eve_characterID + '_128.jpg',
 					function(err, url) {}
 				);
 			}
@@ -262,11 +274,11 @@
 				users[i]['eve_vcode'] = undefined;
 
 				// Don't try to grab eve data for guests, or if eve data is already present for this user
-				if (users[i].uid != undefined && !users[i]['eve_name']) {
+				if (users[i].uid != undefined && users[i].uid > 0 && !users[i].eve_characters) {
 					uid = users[i].uid;
 
 					if (uids.indexOf(uid) === -1) {
-						uids.push('user:' + uid);
+						uids.push(uid);
 					}
 
 					if (Array.isArray(index[uid])) {
@@ -279,19 +291,61 @@
 		}
 
 		if (uids.length > 0) {
-			// We get data directly from the DB because other we get an infinite loop
-			db.getObjectsFields(uids, Config.userFields.concat('uid'), function(err, result) {
-				var cur;
-				for (var i = 0, l1 = result.length; i < l1; i++) {
-					for (var j = 0, l2 = index[result[i].uid].length; j < l2; j++) {
-						cur = index[result[i].uid][j];
-						Config.userFields.forEach(function(el) {
-							users[cur][el] = result[i][el];
-						});
-					}
-				}
+			async.parallel([
+				function(next) {
+					var keys = uids.map(function(uid) {
+						return 'user:' + uid;
+					});
 
-				callback(null, users);
+					// We get data directly from the DB because otherwise we get an infinite loop
+					db.getObjectsFields(keys, Config.userFields.concat('uid'), function(err, result) {
+						var cur;
+						// Here we go... Loop through all the unique results and set data on all the actual occurrences
+						for (var i = 0, l1 = result.length; i < l1; i++) {
+							for (var j = 0, l2 = index[result[i].uid].length; j < l2; j++) {
+								cur = index[result[i].uid][j];
+								Config.userFields.forEach(function(el) {
+									users[cur][el] = result[i][el];
+								});
+								users[cur]['eve_keyid'] = undefined;
+								users[cur]['eve_vcode'] = undefined;
+							}
+						}
+
+						next();
+					});
+				},
+				function(next) {
+					async.each(uids,
+						function(uid, next) {
+							var cur;
+							db.getListRange('eve:' + uid + ':characters', 0, -1, function(err, chars) {
+								async.map(chars, function(charIndex, cb) {
+									db.getObject('eve:' + uid + ':characters:' + charIndex, cb);
+								}, function(err, result) {
+									var filtered = false;
+									for (var i = 0, l = index[uid].length; i < l; i++) {
+										cur = index[uid][i];
+										if (!filtered) {
+											// We don't need the primary character in here
+											result = result.filter(function(el) {
+												return users[cur].eve_characterID != el.eve_characterID;
+											});
+											filtered = true;
+										}
+										users[cur].eve_characters = result;
+									}
+									next();
+								});
+							});
+						},
+						function(err, result) {
+							next();
+						}
+					)
+				}
+			], function(err, result) {
+				callback(err, users);
 			});
 		} else {
 			callback(null, users);

@@ -11,7 +11,7 @@
 		{ "hook": "filter:register.build", "method": "addRegistrationField" },
 		{ "hook": "filter:register.check", "method": "checkRegistration" },
 		{ "hook": "filter:user.custom_fields", "method": "addCustomFields" },
-		{ "hook": "action:user.create", "method": "userCreated" },
+		{ "hook": "action:user.create", "method": "addExtraCharacterInfo" },
 
 		{ "hook": "filter:users.get", "method": "modifyUserData" }
 	],
