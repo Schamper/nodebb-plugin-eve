@@ -4,7 +4,6 @@
 		AdminSockets = module.parent.require('./socket.io/admin').plugins,
 		PluginSockets = module.parent.require('./socket.io/plugins'),
 		UserSockets = module.parent.require('./socket.io/user'),
-		User = module.parent.require('./user'),
 		db = module.parent.require('./database'),
 		winston = module.parent.require('winston'),
 		async = module.parent.require('async'),
@@ -194,12 +193,20 @@
 		});
 	};
 
-	EVE.addExtraCharacterInfo = function(userData) {
+	EVE.addExtraCharacterInfo = function(userData, callback) {
 		if (userData.eve_keyid && userData.eve_vcode) {
 			var api = new Api.client({
 				keyID: userData.eve_keyid,
 				vCode: userData.eve_vcode
 			}), uid = userData.uid;
+
+			if (userData.eve_characterID) {
+				UserSockets.uploadProfileImageFromUrl(
+					{ uid: userData.uid },
+					'http://image.eveonline.com/Character/' + userData.eve_characterID + '_128.jpg',
+					function(err, url) {}
+				);
+			}
 
 			async.waterfall([
 				function(callback) {
@@ -245,20 +252,22 @@
 			], function(err, characterData) {
 				if (err) return;
 
-				db.delete('eve:' + uid + ':characters');
-				characterData.forEach(function(char, index) {
-					db.listAppend('eve:' + uid + ':characters', index);
-					db.setObject('eve:' + uid + ':characters:' + index, char);
+				db.delete('eve:' + uid + ':characters', function(err, res) {
+					if (err) {
+						if (callback) callback(err);
+						return;
+					}
+
+					characterData.forEach(function(char, index) {
+						db.listAppend('eve:' + uid + ':characters', index);
+						db.setObject('eve:' + uid + ':characters:' + index, char);
+					});
+
+					if (callback) callback();
 				});
 			});
-
-			if (userData.eve_characterID) {
-				UserSockets.uploadProfileImageFromUrl(
-					{ uid: userData.uid },
-					'http://image.eveonline.com/Character/' + userData.eve_characterID + '_128.jpg',
-					function(err, url) {}
-				);
-			}
+		} else {
+			if (callback) callback();
 		}
 	};
 
