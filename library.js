@@ -1,12 +1,12 @@
 (function(EVE) {
 	var pjson = require('./package.json'),
 		Settings = module.parent.require('./settings'),
-		User = module.parent.require('./user'),
 		AdminSockets = module.parent.require('./socket.io/admin').plugins,
 		PluginSockets = module.parent.require('./socket.io/plugins'),
 		UserSockets = module.parent.require('./socket.io/user'),
-		winston = module.parent.require('winston'),
 		db = module.parent.require('./database'),
+		winston = module.parent.require('winston'),
+		async = module.parent.require('async'),
 
 		Api = require('./lib/api'),
 		Upgrade = require('./lib/upgrade');
@@ -178,15 +178,13 @@
 						return callback(new Error('Unknown error'), req, res, userData);
 					}
 
-					userData['eve_ticker'] = corporateResult.ticker.content;
-					userData['eve_name'] = characterResult.characterName.content;
-					userData['eve_fullname'] = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
-					userData['eve_characterID'] = charId;
-					userData['eve_allianceID'] = allianceID;
-					userData['eve_corporationID'] = corporationID;
+					userData.eve_ticker = corporateResult.ticker.content;
+					userData.eve_name = characterResult.characterName.content;
+					userData.eve_fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
+					userData.eve_characterID = charId;
+					userData.eve_allianceID = allianceID;
+					userData.eve_corporationID = corporationID;
 
-					//This doesn't work in NodeBB yet
-					//userData.picture = 'http://image.eveonline.com/Character/' + charId + '_128.jpg';
 					return callback(null, req, res, userData);
 				});
 			} else {
@@ -196,12 +194,59 @@
 	};
 
 	EVE.userCreated = function(userData) {
-		if (userData['eve_characterID']) {
-			UserSockets.uploadProfileImageFromUrl(
-				{ uid: userData.uid },
-				'http://image.eveonline.com/Character/' + userData['eve_characterID'] + '_128.jpg',
-				function(err, url) {}
-			);
+		if (userData['eve_keyid'] && userData['eve_vcode']) {
+			var api = new Api.client({
+				keyID: userData['eve_keyid'],
+				vCode: userData['eve_vcode']
+			});
+
+			api.getCharacters(null, function(err, result) {
+				if (err) return;
+
+				var characterData = [], character;
+				for (var charId in result.characters) {
+					if (result.characters.hasOwnProperty(charId)) {
+						(function() {
+							character = result.characters[charId];
+							var char = {};
+
+//							for (var charKey in character) {
+//								if (charKey != 'cachedUntil' && charKey != 'currentTime' && character.hasOwnProperty(charKey)) {
+//									char['eve_' + charKey] = character[charKey];
+//								}
+//							}
+
+							char = {
+								eve_name: character.name,
+								eve_allianceID: character.allianceID,
+								eve_allianceName: character.allianceName,
+								eve_corporationID: character.corporationID,
+								eve_corporationName: character.corporationName,
+								eve_characterID: charId
+							};
+
+							if (character.corporationID != "0") {
+								api.getCorporationSheet({ corporationID: character.corporationID }, function(err, corporateResult) {
+									char.eve_ticker = corporateResult.ticker.content;
+									char.eve_fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
+
+									characterData.push(char);
+								});
+							} else {
+								characterData.push(char);
+							}
+						})();
+					}
+				}
+			});
+
+			if (userData['eve_characterID']) {
+				UserSockets.uploadProfileImageFromUrl(
+					{ uid: userData.uid },
+					'http://image.eveonline.com/Character/' + userData['eve_characterID'] + '_128.jpg',
+					function(err, url) {}
+				);
+			}
 		}
 	};
 
@@ -262,6 +307,22 @@
 				});
 
 				api.getCharacters(null, function(err, result) {
+					if (err) {
+						return callback(new Error('EVE Client error'));
+					}
+
+					return callback(null, result);
+				});
+			}
+		},
+		getCharacterInfo: function(socket, data, callback) {
+			if (data.keyId && data.keyId.length > 0 && data.vCode && data.vCode.length > 0 && data.characterID && data.characterID.length > 0) {
+				var api = new Api.client({
+					keyID: data.keyId.trim(),
+					vCode: data.vCode.trim()
+				});
+
+				api.getCharacterInfo({ characterID: data.characterID }, function(err, result) {
 					if (err) {
 						return callback(new Error('EVE Client error'));
 					}
