@@ -173,7 +173,7 @@
 				allowedCorporation = true;
 			}
 
-			if (allowedAlliance && allowedCorporation) {
+			if (allowedAlliance || allowedCorporation) {
 				api.getCorporationSheet({ corporationID: corporationID }, function(err, corporateResult) {
 					if (err) {
 						return callback(new Error('Unknown error'), data);
