@@ -21,7 +21,8 @@
         "url": "https://github.com/Schamper/nodebb-plugin-eve/issues"
     },
 	"dependencies": {
-		"neow": "~1.0.0"
+		"neow": "~1.0.0",
+		"cron": "~1.0.5"
 	},
 	"nbbpm": {
 		"compatibility": "^0.6.0"

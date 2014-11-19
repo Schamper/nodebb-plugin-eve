@@ -6,6 +6,19 @@
 
 <div class="row">
     <form class="form" id="eveAdminForm">
+        <div class="col-xs-12">
+            <h3>General settings
+                <button class="btn btn-success btn-xs pull-right save">Save</button>
+            </h3>
+
+            <div class="form-group">
+                <label for="cronPattern">Cron pattern for data syncing.</label>
+                <input type="text" data-key="cronPattern" class="form-control" id="cronPattern">
+                <p class="help-block">Make sure this is a valid pattern!</p>
+                <button data-func="syncNow" class="btn btn-default" type="button">Sync now</button>
+            </div>
+        </div>
+
         <div class="col-xs-6 pull-left">
             <h3>Alliance whitelist
                 <button class="btn btn-success btn-xs pull-right save">Save</button>
@@ -164,6 +177,16 @@
                 }));
 
                 lists[type][id] = name;
+            });
+        });
+
+        $('[data-func="syncNow"]').click(function(event) {
+            socket.emit('plugins.eve.syncNow', null, function(err, count) {
+                if (err) {
+                    app.alertError('Something went wrong, check the logs.');
+                } else {
+                    app.alertSuccess('Updated ' + count + ' users.');
+                }
             });
         });
 

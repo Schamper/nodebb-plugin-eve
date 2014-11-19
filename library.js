@@ -4,9 +4,12 @@
 		AdminSockets = module.parent.require('./socket.io/admin').plugins,
 		PluginSockets = module.parent.require('./socket.io/plugins'),
 		UserSockets = module.parent.require('./socket.io/user'),
+		User = module.parent.require('./user'),
 		db = module.parent.require('./database'),
 		winston = module.parent.require('winston'),
 		async = module.parent.require('async'),
+		cron = require('cron').CronJob,
+		cronJob,
 
 		Api = require('./lib/api'),
 		Upgrade = require('./lib/upgrade');
@@ -30,11 +33,13 @@
 				alliance: '{}',
 				corporation: '{}'
 			},
-			version: ''
+			version: '',
+			cronPattern: '* * * * *'
 		},
 		sockets: {
 			sync: function() {
 				Config.global.sync();
+				startCron();
 			}
 		}
 	};
@@ -63,6 +68,8 @@
 		PluginSockets[Config.plugin.id] = EVE.sockets;
 
 		Config.global = new Settings(Config.plugin.id, Config.plugin.version, Config.defaults, function() {
+			startCron();
+			
 			var oldVersion = Config.global.get('version');
 
 			if (oldVersion < Config.plugin.version) {
@@ -153,7 +160,7 @@
 			}
 
 			if (characterResult.corporationID) {
-				corporationID = characterResult.corporationID.content
+				corporationID = characterResult.corporationID.content;
 			}
 
 			if (Config.global.get('toggles.allianceWhitelistEnabled')) {
@@ -406,7 +413,104 @@
 					return callback(null, result.characters);
 				});
 			}
+		},
+		syncNow: function(socket, data, callback) {
+			User.isAdministrator(socket.uid, function(err, isAdmin) {
+				if (isAdmin) {
+					syncUserData(callback);
+				}
+			});
 		}
+	};
+
+	var startCron = function() {
+		if (cronJob && cronJob.stop) cronJob.stop();
+		try {
+			var pattern = Config.global.get('cronPattern');
+			cronJob = new cron(pattern, syncUserData, null, true);
+			winston.info('[' + pjson.name + '] Cron job started with pattern ' + pattern + '.');
+		} catch(ex) {
+			winston.error('[' + pjson.name + '] Invalid cron pattern!');
+		}
+	};
+
+	var syncUserData = function(callback) {
+		var count = 0;
+
+		winston.info('[' + pjson.name + '] User data sync started.');
+		
+		db.getSortedSetRange('users:joindate', 0, -1, function (err, uids) {
+			var keys = uids.map(function(uid) {
+				return 'user:' + uid;
+			});
+
+			db.getObjectsFields(keys, ['uid', 'eve_vcode', 'eve_keyid', 'eve_characterID'], function(err, users) {
+				async.each(users, function(user, cb) {
+					if (user.eve_vcode && user.eve_keyid && user.eve_characterID) {
+						var api = new Api.client({
+							keyID: user.eve_keyid,
+							vCode: user.eve_vcode
+						});
+
+						async.waterfall([
+							function(next) {
+								api.getCharacterInfo({ characterID: user.eve_characterID }, function(err, characterResult) {
+									if (err) {
+										return next(new Error('API Error'));
+									}
+
+									var newData = {};
+									newData.eve_name = characterResult.characterName.content;
+									newData.eve_allianceID = characterResult.allianceID.content;
+									newData.eve_corporationID = characterResult.corporationID.content;
+
+									next(null, newData);
+								});
+							},
+							function(newData, next) {
+								if (newData.eve_corporationID && newData.eve_corporationID != "0") {
+									api.getCorporationSheet({ corporationID: newData.eve_corporationID }, function(err, corporateResult) {
+										if (err) {
+											return next(new Error('API Error'));
+										}
+
+										newData.eve_ticker = corporateResult.ticker.content;
+										newData.eve_fullname = '[' + corporateResult.ticker.content + '] ' + newData.eve_corporationID;
+
+										next(null, newData);
+									});
+								} else {
+									next(null, newData);
+								}
+							}
+						], function(err, result) {
+							User.setUserFields(user.uid, result, function(err, res) {
+								if (err) return cb(err);
+
+								result.uid = user.uid;
+								result.eve_keyid = user.eve_keyid;
+								result.eve_vcode = user.eve_vcode;
+								EVE.addExtraCharacterInfo(result, function(err) {
+									if (err) return cb(err);
+
+									count++;
+									cb();
+								});
+							})
+						});
+					} else {
+						cb();
+					}
+				}, function(err) {
+					if (err) {
+						winston.error('[' + pjson.name + '] ' + err);
+					}
+
+					winston.info('[' + pjson.name + '] Updated ' + count + ' users.');
+					if (callback) callback(err, count);
+				});
+			});
+		});
 	};
 
 })(module.exports);
