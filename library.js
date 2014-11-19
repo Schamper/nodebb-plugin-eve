@@ -180,20 +180,25 @@
 			}
 
 			if (allowedAlliance || allowedCorporation) {
-				api.getCorporationSheet({ corporationID: corporationID }, function(err, corporateResult) {
-					if (err) {
-						return callback(new Error('Unknown error'), data);
-					}
+				data.userData.eve_name = characterResult.characterName.content;
+				data.userData.eve_characterID = charId;
+				data.userData.eve_allianceID = allianceID;
+				data.userData.eve_corporationID = corporationID;
 
-					data.userData.eve_ticker = corporateResult.ticker.content;
-					data.userData.eve_name = characterResult.characterName.content;
-					data.userData.eve_fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
-					data.userData.eve_characterID = charId;
-					data.userData.eve_allianceID = allianceID;
-					data.userData.eve_corporationID = corporationID;
+				if (corporationID && corporationID != "0") {
+					api.getCorporationSheet({ corporationID: corporationID }, function(err, corporateResult) {
+						if (err) {
+							return callback(new Error('Unknown error'), data);
+						}
 
+						data.userData.eve_ticker = corporateResult.ticker.content;
+						data.userData.eve_fullname = '[' + corporateResult.ticker.content + '] ' + characterResult.characterName.content;
+
+						return callback(null, data);
+					});
+				} else {
 					return callback(null, data);
-				});
+				}
 			} else {
 				return callback(new Error('Not an allowed alliance or corporation'), data);
 			}
